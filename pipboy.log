@@ -1,0 +1,18 @@
+Terminated
+Traceback (most recent call last):
+  File "/home/borys/pipboy/main.py", line 65, in <module>
+    main()
+    ~~~~^^
+  File "/home/borys/pipboy/main.py", line 33, in main
+    enc.update()
+    ~~~~~~~~~~^^
+  File "/home/borys/pipboy/input/encoder.py", line 33, in update
+    self.callback_rotate(direction)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/borys/pipboy/main.py", line 22, in <lambda>
+    enc.on_rotate(lambda d: tabbar.rotate(d))
+                            ~~~~~~~~~~~~~^^^
+  File "/home/borys/pipboy/ui/tabbar.py", line 36, in rotate
+    self.active = (self.active + 1) % len(self.names)
+                                          ^^^^^^^^^^
+AttributeError: 'TabBar' object has no attribute 'names'
