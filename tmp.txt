@@ -1,1 +1,8 @@
 ps aux | grep pipboy
+
+
+rsync -av \
+  --exclude '.venv' \
+  --exclude '__pycache__' \
+  borys@192.168.50.142:/home/borys/pipboy/ \
+  ~/pipboy/
