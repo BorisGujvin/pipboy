@@ -5,7 +5,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 FONTS_DIR = BASE_DIR / "assets" / "fonts"
 
-IP_BG = (16, 24, 16)
+PIP_BG = (16, 24, 16)
 PIP_PANEL = (24, 40, 24)
 PIP_ACCENT = (80, 200, 120)
 PIP_TEXT = (180, 255, 200)
