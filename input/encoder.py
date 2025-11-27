@@ -33,7 +33,6 @@ class Encoder:
             self._on_rotate(-1)
 
     def _pressed(self):
-        print('.')
         if self._on_click:
             self._on_click()
 
