@@ -81,10 +81,10 @@ def main():
                     x, y = pos
                     idx = tabbar.hit_test(x, y)
                     if idx is not None:
-                        tabbar.active = idx
-                        # тап по табам всегда возвращает в меню и деакт. страницу
-                        focus = "page"
                         set_page_active(False)
+                        tabbar.active = idx
+                        focus = "page"
+                        set_page_active(True)
                     else:
                         pages[tabbar.active].handle_touch(x, y, {})
                 time.sleep(0.002)
