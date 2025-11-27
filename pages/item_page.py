@@ -1,88 +1,227 @@
-# main.py
+# pages/item_page.py
 import time
-from PIL import Image, ImageDraw
+from .base import Page
+from ui.theme import (
+    PADDING, PIP_PANEL, PIP_ACCENT, PIP_TEXT, DIV_LINE, TAB_H,
+    font_sm, font_md, font_lg
+)
 
-from hardware.display import Display, W, H
-from hardware.touch import Touch
-from ui.theme import PIP_BG
-from ui.tabbar import TabBar
-from pages.stat_page import StatPage
-from pages.item_page import ItemPage
-from pages.data_page import DataPage
-from pages.body_page import BodyPage
-from config import TAB_NAMES
-from input.encoder import Encoder
+try:
+    from affectors.ha_client import toggle as ha_toggle, get_state as ha_get_state
+except Exception as e:
+    ha_toggle = None
+    ha_get_state = None
+    print("[ItemPage] affectors.ha_client import failed:", e)
 
 
-def main():
-    disp = Display()
-    touch = Touch()
-    tabbar = TabBar(W, TAB_NAMES)
-    enc = Encoder()
+class ItemPage(Page):
+    """
+    Items = sockets page (kept ItemPage name).
 
-    pages = [
-        BodyPage(W, H),
-        StatPage(W, H),
-        ItemPage(W, H),
-        DataPage(W, H),
-    ]
+    Requirement:
+      - when page ACTIVE: header shows "BACK" instead of "SOCKETS" (same size/height)
+      - no BACK row in list
+      - encoder cycles in circle THROUGH BACK and sockets
+    """
 
-    focus = "tabs"
+    def __init__(self, width, height):
+        self.W = width
+        self.H = height
 
-    def set_page_active(active: bool):
-        page = pages[tabbar.active]
-        if hasattr(page, "set_active"):
-            page.set_active(active)
+        self.sockets = [
+            {"id": "switch.sonoff_1002036b3f_1", "name": "N1", "state": False},
+            {"id": "switch.stub_n2",            "name": "N2", "state": False},
+        ]
 
-    def handle_rotate(d):
-        nonlocal focus
-        if focus == "tabs":
-            tabbar.rotate(d)
+        # sel = -1 => BACK (header)
+        # sel = 0..n-1 => sockets
+        self.sel = 0
+
+        self.active = False  # set by main via set_active()
+
+        self.area = (PADDING, TAB_H + PADDING, self.W - PADDING, self.H - PADDING)
+        self.row_h = 62
+        self.row_gap = 8
+
+        self._last_toggle_ts = 0.0
+        self.debounce_sec = 0.35
+
+        self._sync_states()
+
+    def set_active(self, active: bool):
+        self.active = active
+        # when entering page, start selection on first socket
+        if active:
+            self.sel = 0
         else:
-            page = pages[tabbar.active]
-            if hasattr(page, "on_encoder"):
-                page.on_encoder(d)
+            self.sel = 0  # doesn't matter much outside
 
-    def handle_click():
-        nonlocal focus
-        if focus == "tabs":
-            focus = "page"
-            set_page_active(True)
-        else:
-            page = pages[tabbar.active]
-            res = page.on_click() if hasattr(page, "on_click") else None
-            if res == "back":
-                focus = "tabs"
-                set_page_active(False)
+    def _sync_states(self):
+        if not ha_get_state:
+            return
+        for s in self.sockets:
+            if s["id"].startswith("switch.sonoff_"):
+                try:
+                    s["state"] = bool(ha_get_state(s["id"]))
+                except Exception as e:
+                    print("[SYNC ERROR]", e)
 
-    enc.on_rotate(handle_rotate)
-    enc.on_click(handle_click)
+    # ---------- RENDER ----------
 
-    try:
-        while True:
-            img = Image.new('RGB', (W, H), PIP_BG)
-            draw = ImageDraw.Draw(img)
+    def render(self, draw):
+        x0, y0, x1, y1 = self.area
+        draw.rectangle(self.area, outline=PIP_ACCENT, fill=PIP_PANEL)
 
-            tabbar.render(draw)
-            pages[tabbar.active].render(draw)
+        # Header: SOCKETS normally, BACK when active
+        header_txt = "BACK" if self.active else "SOCKETS"
+        header_selected = (self.sel == -1)
 
-            frame = Display.pil_to_rgb565(img)
-            disp.push_frame_rgb565(frame)
+        header_color = PIP_ACCENT if header_selected else PIP_ACCENT
+        # selected just makes it brighter via underline; color stays accent
+        draw.text((x0 + 10, y0 + 6), header_txt, fill=header_color, font=font_md)
 
-            t0 = time.time()
-            while time.time() - t0 < 0.03:
-                enc.update()  # у тебя pass — можно оставить
+        # underline when BACK selected
+        if header_selected:
+            w = draw.textbbox((0, 0), header_txt, font=font_md)[2]
+            draw.line([x0 + 10, y0 + 26, x0 + 10 + w, y0 + 26], fill=PIP_ACCENT, width=2)
 
-                pos = touch.read(samples=5)
-                if pos is not None:
-                    x, y = pos
-                    idx = tabbar.hit_test(x, y)
-                    if idx is not None:
-                        tabbar.active = idx
-                        focus = "tabs"
-                        set_page_active(False)
-                    else:
-                        pages[tabbar.active].handle_touch(x, y, {})
-                time.sleep(0.002)
+        draw.line([x0 + 8, y0 + 30, x1 - 8, y0 + 30], fill=DIV_LINE, width=2)
 
-    except KeyboardI
+        # list (only sockets)
+        y = y0 + 38
+        for i, s in enumerate(self.sockets):
+            self._draw_socket_row(draw, x0 + 8, y, x1 - 8, y + self.row_h,
+                                  s, selected=(i == self.sel))
+            draw.line([x0 + 8, y + self.row_h + 3, x1 - 8, y + self.row_h + 3],
+                      fill=DIV_LINE, width=1)
+            y += self.row_h + self.row_gap
+
+        draw.text((x0 + 10, y1 - 18), "tap a socket to toggle", fill=DIV_LINE, font=font_sm)
+
+    def _draw_socket_row(self, draw, x0, y0, x1, y1, s, selected=False):
+        mid_y = (y0 + y1) // 2
+        name_color = PIP_ACCENT if selected else DIV_LINE
+
+        draw.text((x0 + 6, y0 + 6), s["name"], fill=name_color, font=font_lg)
+        sub = "real device" if s["id"].startswith("switch.sonoff_") else "stub"
+        draw.text((x0 + 6, y0 + 36), sub, fill=DIV_LINE, font=font_sm)
+
+        toggle_w = 120
+        toggle_h = 38
+        tx1 = x1 - 6
+        tx0 = tx1 - toggle_w
+        ty0 = mid_y - toggle_h // 2
+        ty1 = ty0 + toggle_h
+        self._draw_toggle(draw, tx0, ty0, tx1, ty1, s["state"])
+
+    def _draw_toggle(self, draw, x0, y0, x1, y1, is_on):
+        w = x1 - x0
+        h = y1 - y0
+        r = h // 2
+
+        bg = PIP_PANEL
+        accent = PIP_ACCENT
+        dim = DIV_LINE
+
+        draw.rounded_rectangle([x0, y0, x1, y1], radius=r,
+                               outline=accent, fill=bg, width=2)
+
+        if is_on:
+            pad = 2
+            right_start = x0 + int(w * 0.38)
+            draw.rounded_rectangle(
+                [right_start, y0 + pad, x1 - pad, y1 - pad],
+                radius=max(0, r-2),
+                outline=None,
+                fill=accent
+            )
+
+        grid_step = 4
+        for gx in range(int(x0)+grid_step, int(x1-grid_step), grid_step):
+            draw.line([gx, y0+2, gx, y1-2], fill=dim, width=1)
+
+        knob_r = r - 3
+        kx = (x0 + w - r) if is_on else (x0 + r)
+        ky = y0 + r
+
+        draw.ellipse([kx-knob_r-2, ky-knob_r-2, kx+knob_r+2, ky+knob_r+2],
+                     outline=accent, fill=bg, width=2)
+        if is_on:
+            draw.ellipse([kx-knob_r+1, ky-knob_r+1, kx+knob_r-1, ky+knob_r-1],
+                         outline=None, fill=accent)
+
+        on_txt = "ON"
+        on_w = draw.textbbox((0, 0), on_txt, font=font_sm)[2]
+        on_x = x1 - r - on_w // 2
+        ty = y0 + (h - 10) // 2
+        draw.text((on_x, ty), on_txt, fill=(bg if is_on else dim), font=font_sm)
+
+    # ---------- INPUT: ENCODER ----------
+
+    def on_encoder(self, delta: int):
+        """
+        Circular navigation through BACK(header) + sockets.
+        order: BACK(-1) -> 0 -> 1 -> ... -> BACK
+        """
+        n = len(self.sockets)
+        total = n + 1  # BACK + sockets
+
+        # map sel to [0..total-1], where 0=BACK
+        idx = 0 if self.sel == -1 else (self.sel + 1)
+        idx = (idx + delta) % total
+
+        # map back
+        self.sel = -1 if idx == 0 else (idx - 1)
+
+    def on_click(self):
+        if self.sel == -1:
+            return "back"
+        self._toggle_index(self.sel)
+
+    # ---------- INPUT: TOUCH ----------
+
+    def handle_touch(self, x, y, state):
+        idx = self._row_index_at(x, y)
+        if idx is None:
+            return
+
+        self.sel = idx
+
+        now = time.time()
+        if now - self._last_toggle_ts < self.debounce_sec:
+            return
+        self._last_toggle_ts = now
+
+        self._toggle_index(idx)
+
+    def _row_index_at(self, x, y):
+        x0, y0, x1, y1 = self.area
+        if not (x0 <= x <= x1 and y0 <= y <= y1):
+            return None
+
+        list_y0 = y0 + 38
+        if y < list_y0:
+            return None
+
+        idx = int((y - list_y0) // (self.row_h + self.row_gap))
+        if 0 <= idx < len(self.sockets):
+            return idx
+        return None
+
+    # ---------- TOGGLE ----------
+
+    def _toggle_index(self, socket_idx):
+        s = self.sockets[socket_idx]
+        eid = s["id"]
+
+        if eid.startswith("switch.sonoff_") and ha_toggle:
+            try:
+                new_state = ha_toggle(eid)
+                s["state"] = bool(new_state)
+                print(f"[HA TOGGLE] {eid} -> {s['state']}")
+                return
+            except Exception as e:
+                print("[HA TOGGLE ERROR]", e)
+
+        s["state"] = not s["state"]
+        print(f"[LOCAL TOGGLE] {eid} -> {s['state']}")
