@@ -1,4 +1,3 @@
-# pages/item_page.py
 import time
 from .base import Page
 from ui.theme import (
