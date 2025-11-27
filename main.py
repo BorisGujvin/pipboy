@@ -83,7 +83,7 @@ def main():
                     if idx is not None:
                         tabbar.active = idx
                         # тап по табам всегда возвращает в меню и деакт. страницу
-                        focus = "tabs"
+                        focus = "page"
                         set_page_active(False)
                     else:
                         pages[tabbar.active].handle_touch(x, y, {})
