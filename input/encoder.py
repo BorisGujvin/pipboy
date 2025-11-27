@@ -14,13 +14,11 @@ class Encoder:
         self._enc = RotaryEncoder(ENC_A, ENC_B, max_steps=0, wrap=False)
         self._btn = Button(ENC_SW, pull_up=True, bounce_time=0.05)
 
-        # вешаем внутренние колбэки
         self._enc.when_rotated_clockwise = self._rot_cw
         self._enc.when_rotated_counter_clockwise = self._rot_ccw
         self._btn.when_pressed = self._pressed
 
     def on_rotate(self, fn):
-        """fn(direction: int), direction = +1 (вправо) или -1 (влево)."""
         self._on_rotate = fn
 
     def on_click(self, fn):
@@ -35,9 +33,9 @@ class Encoder:
             self._on_rotate(-1)
 
     def _pressed(self):
+        print('.')
         if self._on_click:
             self._on_click()
 
     def update(self):
-        # gpiozero сам крутится в фоне, тут ничего делать не нужно
         pass

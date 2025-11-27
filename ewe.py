@@ -1,31 +1,55 @@
-import asyncio
-from ewelink import EWeLink
-from ewelink.types import AppCredentials, EmailUserCredentials
+import os
+import sys
+import json
+import requests
 
-APP_CREDENTIALS = AppCredentials(
-    id="APP_ID",        # app id из eWeLink Open Platform
-    secret="APP_SECRET" # app secret оттуда же
-)
+HA_IP = os.getenv("HA_IP", "192.168.50.35")  # если HA на этой же малинке
+TOKEN = os.getenv("HA_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZDU1YjE2NjAzYTY0MjJhOTE5MjMxOTZlYTE3OWNmMyIsImlhdCI6MTc2NDI0MTM0NiwiZXhwIjoyMDc5NjAxMzQ2fQ.qVnpPz8LLnE9oZCDXse8lxoCCLwVjTQJN7NSoZR-5kQ")
+ENTITY = os.getenv("HA_ENTITY", "switch.sonoff_1002036b3f_1")
 
-USER_CREDENTIALS = EmailUserCredentials(
-    email="b.oris.ka@ukr.net",
-    password="k0r0stel"
-)
+BASE = f"http://{HA_IP}:8123/api"
+HEADERS = {
+    "Authorization": f"Bearer {TOKEN}",
+    "Content-Type": "application/json",
+}
 
-async def main():
-    api = EWeLink(app=APP_CREDENTIALS, user=USER_CREDENTIALS)
-    await api.login()
+def turn(service: str):
+    url = f"{BASE}/services/switch/{service}"
+    r = requests.post(url, headers=HEADERS, json={"entity_id": ENTITY}, timeout=10)
+    r.raise_for_status()
 
-    devices = await api.get_devices()
-    print(devices)
+def state() -> str:
+    url = f"{BASE}/states/{ENTITY}"
+    r = requests.get(url, headers=HEADERS, timeout=10)
+    r.raise_for_status()
+    return r.json().get("state", "unknown")
 
-    # допустим, у розетки deviceid = "1000abcd1234"
-    plug = await api.get_device("1000abcd1234")
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: socket.py on|off|toggle|state")
+        sys.exit(1)
 
-    # включить
-    await plug.on()
+    cmd = sys.argv[1].lower()
 
-    # выключить
-    await plug.off()
+    if cmd == "on":
+        turn("turn_on")
+        print("ON")
+    elif cmd == "off":
+        turn("turn_off")
+        print("OFF")
+    elif cmd == "toggle":
+        st = state()
+        if st == "on":
+            turn("turn_off")
+            print("OFF")
+        else:
+            turn("turn_on")
+            print("ON")
+    elif cmd == "state":
+        print(state())
+    else:
+        print("Unknown command. Use: on|off|toggle|state")
+        sys.exit(2)
 
-asyncio.run(main())
+if __name__ == "__main__":
+    main()
