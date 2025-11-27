@@ -27,10 +27,13 @@ def main():
         DataPage(W, H),
     ]
 
-    # focus: "tabs" (меню вкладок) или "page" (внутри вкладки)
     focus = "tabs"
 
-    # ROTATE handler: роутим по focus
+    def set_page_active(active: bool):
+        page = pages[tabbar.active]
+        if hasattr(page, "set_active"):
+            page.set_active(active)
+
     def handle_rotate(d):
         nonlocal focus
         if focus == "tabs":
@@ -40,17 +43,19 @@ def main():
             if hasattr(page, "on_encoder"):
                 page.on_encoder(d)
 
-    # CLICK handler: события приходят сразу из gpiozero Button.when_pressed
     def handle_click():
         nonlocal focus
         if focus == "tabs":
-            # вход во вкладку
+            # ВХОД во вкладку -> сразу активируем страницу
             focus = "page"
+            set_page_active(True)
         else:
             # клик внутри страницы
             page = pages[tabbar.active]
             res = page.on_click() if hasattr(page, "on_click") else None
             if res == "back":
+                # ВЫХОД из вкладки -> деактивируем
+                set_page_active(False)
                 focus = "tabs"
 
     enc.on_rotate(handle_rotate)
@@ -61,18 +66,14 @@ def main():
             img = Image.new('RGB', (W, H), PIP_BG)
             draw = ImageDraw.Draw(img)
 
-            # UI
             tabbar.render(draw)
             pages[tabbar.active].render(draw)
 
-            # Push frame
             frame = Display.pil_to_rgb565(img)
             disp.push_frame_rgb565(frame)
 
-            # Touch burst
             t0 = time.time()
             while time.time() - t0 < 0.03:
-                # update можно оставить (у тебя pass), не мешает
                 enc.update()
 
                 pos = touch.read(samples=5)
@@ -81,7 +82,9 @@ def main():
                     idx = tabbar.hit_test(x, y)
                     if idx is not None:
                         tabbar.active = idx
-                        focus = "tabs"   # тап по табам всегда возвращает в меню
+                        # тап по табам всегда возвращает в меню и деакт. страницу
+                        focus = "tabs"
+                        set_page_active(False)
                     else:
                         pages[tabbar.active].handle_touch(x, y, {})
                 time.sleep(0.002)
