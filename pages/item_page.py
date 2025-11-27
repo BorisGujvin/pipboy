@@ -1,28 +1,51 @@
+# pages/item_page.py
 import time
 from .base import Page
 from ui.theme import (
     PADDING, PIP_PANEL, PIP_ACCENT, PIP_TEXT, DIV_LINE, TAB_H,
-    font_sm, font_md, font_lg)
-from affectors.ha_client import toggle as ha_toggle, get_state as ha_get_state
+    font_sm, font_md, font_lg
+)
+
+# HA client in affectors/
+try:
+    from affectors.ha_client import toggle as ha_toggle, get_state as ha_get_state
+except Exception as e:
+    ha_toggle = None
+    ha_get_state = None
+    print("[ItemPage] affectors.ha_client import failed:", e)
+
 
 class ItemPage(Page):
+    """
+    Items = sockets page (kept ItemPage name).
+    UI:
+      - no left radio/status dot
+      - no row frames (only selected name highlight)
+      - BACK item at top
+      - Fallout slider toggle on the right
+    Input:
+      - encoder rotate moves selection incl. BACK (-1)
+      - encoder click toggles selected socket or returns "back"
+      - touch toggles by tap (state from main is {})
+    """
+
     def __init__(self, width, height):
         self.W = width
         self.H = height
 
         self.sockets = [
-            {"id": "switch.sonoff_1002036b3f_1", "name": "First", "state": False},
-            {"id": "switch.stub_n2",            "name": "Fake", "state": False},
+            {"id": "switch.sonoff_1002036b3f_1", "name": "N1", "state": False},
+            {"id": "switch.stub_n2",            "name": "N2", "state": False},
         ]
 
+        # selected == -1 means BACK
         self.selected = 0
+
         self.area = (PADDING, TAB_H + PADDING, self.W - PADDING, self.H - PADDING)
 
-        # layout
         self.row_h = 62
         self.row_gap = 8
 
-        # debounce
         self._last_toggle_ts = 0.0
         self.debounce_sec = 0.35
 
@@ -38,19 +61,22 @@ class ItemPage(Page):
                 except Exception as e:
                     print("[SYNC ERROR]", e)
 
+    # ---------- RENDER ----------
+
     def render(self, draw):
         x0, y0, x1, y1 = self.area
         draw.rectangle(self.area, outline=PIP_ACCENT, fill=PIP_PANEL)
-        back_color = PIP_ACCENT if self.selected == -1 else DIV_LINE
-        back_text = "<< BACK"
-        draw.text((x0 + 8, y0 + 6), back_text, fill=back_color, font=font_sm)
 
-        # header
-        draw.text((x0 + 10, y0 + 6), "SOCKETS", fill=PIP_ACCENT, font=font_md)
-        draw.line([x0 + 8, y0 + 30, x1 - 8, y0 + 30], fill=DIV_LINE, width=2)
+        # BACK at top-left
+        back_color = PIP_ACCENT if self.selected == -1 else DIV_LINE
+        draw.text((x0 + 8, y0 + 6), "<< BACK", fill=back_color, font=font_sm)
+
+        # header below back
+        draw.text((x0 + 10, y0 + 22), "SOCKETS", fill=PIP_ACCENT, font=font_md)
+        draw.line([x0 + 8, y0 + 46, x1 - 8, y0 + 46], fill=DIV_LINE, width=2)
 
         # list
-        y = y0 + 38
+        y = y0 + 54
         for i, s in enumerate(self.sockets):
             self._draw_row(
                 draw,
@@ -60,24 +86,22 @@ class ItemPage(Page):
                 selected=(i == self.selected)
             )
 
-            # subtle divider between rows (no frame)
+            # subtle divider
             draw.line([x0 + 8, y + self.row_h + 3, x1 - 8, y + self.row_h + 3],
                       fill=DIV_LINE, width=1)
 
             y += self.row_h + self.row_gap
 
-        # footer hint
         draw.text((x0 + 10, y1 - 18), "tap a socket to toggle", fill=DIV_LINE, font=font_sm)
 
     def _draw_row(self, draw, x0, y0, x1, y1, s, selected=False):
         mid_y = (y0 + y1) // 2
 
-        # name only (highlight when selected)
+        # name only (selected brighter)
         name_x = x0 + 6
         name_color = PIP_ACCENT if selected else DIV_LINE
         draw.text((name_x, y0 + 6), s["name"], fill=name_color, font=font_lg)
 
-        # optional subtext (dim)
         sub = "real device" if s["id"].startswith("switch.sonoff_") else "stub"
         draw.text((name_x, y0 + 36), sub, fill=DIV_LINE, font=font_sm)
 
@@ -97,10 +121,12 @@ class ItemPage(Page):
 
         bg = PIP_PANEL
         accent = PIP_ACCENT
+        text = PIP_TEXT
         dim = DIV_LINE
 
         # Track outline
-        draw.rounded_rectangle([x0, y0, x1, y1], radius=r, outline=accent, fill=bg, width=2)
+        draw.rounded_rectangle([x0, y0, x1, y1], radius=r,
+                               outline=accent, fill=bg, width=2)
 
         # ON fill (RIGHT segment only)
         if is_on:
@@ -113,7 +139,7 @@ class ItemPage(Page):
                 fill=accent
             )
 
-        # subtle vertical scan/grid inside track
+        # subtle vertical scan/grid
         grid_step = 4
         for gx in range(int(x0)+grid_step, int(x1-grid_step), grid_step):
             draw.line([gx, y0+2, gx, y1-2], fill=dim, width=1)
@@ -123,23 +149,59 @@ class ItemPage(Page):
         kx = (x0 + w - r) if is_on else (x0 + r)
         ky = y0 + r
 
-        # Knob outer ring
         draw.ellipse([kx-knob_r-2, ky-knob_r-2, kx+knob_r+2, ky+knob_r+2],
                      outline=accent, fill=bg, width=2)
-        # Knob inner fill when ON
         if is_on:
             draw.ellipse([kx-knob_r+1, ky-knob_r+1, kx+knob_r-1, ky+knob_r-1],
                          outline=None, fill=accent)
 
-        # Only "ON" label on the right (no OFF label)
+        # Only "ON" label on right (no OFF label)
         on_txt = "ON"
         on_w = draw.textbbox((0, 0), on_txt, font=font_sm)[2]
         on_x = x1 - r - on_w // 2
         ty = y0 + (h - 10) // 2
-
         draw.text((on_x, ty), on_txt, fill=(bg if is_on else dim), font=font_sm)
 
+    # ---------- INPUT: ENCODER ----------
+
+    def on_encoder(self, delta: int):
+        """
+        Rotate inside page:
+          -1 = BACK
+          0..n-1 = sockets
+        """
+        n = len(self.sockets)
+
+        # from BACK down -> first item
+        if self.selected == -1 and delta > 0:
+            self.selected = 0
+            return
+
+        # from first item up -> BACK
+        if self.selected == 0 and delta < 0:
+            self.selected = -1
+            return
+
+        # normal move within list
+        if self.selected >= 0:
+            self.selected = max(0, min(n - 1, self.selected + delta))
+
+    def on_click(self):
+        """
+        Click inside page:
+          if BACK selected -> return to tabs
+          else toggle selected socket
+        """
+        if self.selected == -1:
+            return "back"
+        self._toggle_index(self.selected)
+
+    # ---------- INPUT: TOUCH ----------
+
     def handle_touch(self, x, y, state):
+        # optional debug
+        # print(f"[TOUCH] x={x} y={y} state={state} type={type(state)}")
+
         idx = self._row_index_at(x, y)
         if idx is None:
             return
@@ -158,7 +220,7 @@ class ItemPage(Page):
         if not (x0 <= x <= x1 and y0 <= y <= y1):
             return None
 
-        list_y0 = y0 + 38
+        list_y0 = y0 + 54
         if y < list_y0:
             return None
 
@@ -166,6 +228,8 @@ class ItemPage(Page):
         if 0 <= idx < len(self.sockets):
             return idx
         return None
+
+    # ---------- TOGGLE ----------
 
     def _toggle_index(self, idx):
         s = self.sockets[idx]
@@ -175,39 +239,10 @@ class ItemPage(Page):
             try:
                 new_state = ha_toggle(eid)
                 s["state"] = bool(new_state)
+                print(f"[HA TOGGLE] {eid} -> {s['state']}")
                 return
             except Exception as e:
                 print("[HA TOGGLE ERROR]", e)
 
         s["state"] = not s["state"]
-
-    def on_encoder(self, delta: int):
-        """
-        Энкодер внутри Items:
-        delta +1/-1 двигает выделение.
-        selected == -1 это BACK.
-        """
-        n = len(self.sockets)
-
-        if self.selected == -1 and delta > 0:
-            self.selected = 0
-            return
-
-        if self.selected == 0 and delta < 0:
-            self.selected = -1
-            return
-
-        if self.selected >= 0:
-            self.selected = max(0, min(n - 1, self.selected + delta))
-
-
-    def on_click(self):
-        """
-        Клик энкодера внутри Items:
-        - если BACK выбран -> выйти в табы
-        - иначе toggle выбранную розетку
-        """
-        if self.selected == -1:
-            return "back"
-
-        self._toggle_index(self.selected)
+        print(f"[LOCAL TOGGLE] {eid} -> {s['state']}")
