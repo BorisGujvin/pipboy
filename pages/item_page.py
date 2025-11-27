@@ -41,6 +41,9 @@ class ItemPage(Page):
     def render(self, draw):
         x0, y0, x1, y1 = self.area
         draw.rectangle(self.area, outline=PIP_ACCENT, fill=PIP_PANEL)
+        back_color = PIP_ACCENT if self.selected == -1 else DIV_LINE
+        back_text = "<< BACK"
+        draw.text((x0 + 8, y0 + 6), back_text, fill=back_color, font=font_sm)
 
         # header
         draw.text((x0 + 10, y0 + 6), "SOCKETS", fill=PIP_ACCENT, font=font_md)
@@ -94,7 +97,6 @@ class ItemPage(Page):
 
         bg = PIP_PANEL
         accent = PIP_ACCENT
-        text = PIP_TEXT
         dim = DIV_LINE
 
         # Track outline
@@ -178,3 +180,34 @@ class ItemPage(Page):
                 print("[HA TOGGLE ERROR]", e)
 
         s["state"] = not s["state"]
+
+    def on_encoder(self, delta: int):
+        """
+        Энкодер внутри Items:
+        delta +1/-1 двигает выделение.
+        selected == -1 это BACK.
+        """
+        n = len(self.sockets)
+
+        if self.selected == -1 and delta > 0:
+            self.selected = 0
+            return
+
+        if self.selected == 0 and delta < 0:
+            self.selected = -1
+            return
+
+        if self.selected >= 0:
+            self.selected = max(0, min(n - 1, self.selected + delta))
+
+
+    def on_click(self):
+        """
+        Клик энкодера внутри Items:
+        - если BACK выбран -> выйти в табы
+        - иначе toggle выбранную розетку
+        """
+        if self.selected == -1:
+            return "back"
+
+        self._toggle_index(self.selected)
