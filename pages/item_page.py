@@ -2,7 +2,7 @@ import time
 from .base import Page
 from ui.theme import (
     PADDING, PIP_PANEL, PIP_ACCENT, PIP_TEXT, DIV_LINE, TAB_H,
-    font_sm, font_md, font_lg
+    font_sm, font_md, font_lg)
 from affectors.ha_client import toggle as ha_toggle, get_state as ha_get_state
 
 class ItemPage(Page):
@@ -138,8 +138,6 @@ class ItemPage(Page):
         draw.text((on_x, ty), on_txt, fill=(bg if is_on else dim), font=font_sm)
 
     def handle_touch(self, x, y, state):
-        print(f"[TOUCH] x={x} y={y} state={state} type={type(state)}")
-
         idx = self._row_index_at(x, y)
         if idx is None:
             return
@@ -175,10 +173,8 @@ class ItemPage(Page):
             try:
                 new_state = ha_toggle(eid)
                 s["state"] = bool(new_state)
-                print(f"[HA TOGGLE] {eid} -> {s['state']}")
                 return
             except Exception as e:
                 print("[HA TOGGLE ERROR]", e)
 
         s["state"] = not s["state"]
-        print(f"[LOCAL TOGGLE] {eid} -> {s['state']}")
