@@ -40,7 +40,21 @@ def main():
             if hasattr(page, "on_encoder"):
                 page.on_encoder(d)
 
+    # CLICK handler: события приходят сразу из gpiozero Button.when_pressed
+    def handle_click():
+        nonlocal focus
+        if focus == "tabs":
+            # вход во вкладку
+            focus = "page"
+        else:
+            # клик внутри страницы
+            page = pages[tabbar.active]
+            res = page.on_click() if hasattr(page, "on_click") else None
+            if res == "back":
+                focus = "tabs"
+
     enc.on_rotate(handle_rotate)
+    enc.on_click(handle_click)
 
     try:
         while True:
@@ -55,36 +69,12 @@ def main():
             frame = Display.pil_to_rgb565(img)
             disp.push_frame_rgb565(frame)
 
-            # Touch/Encoder burst
+            # Touch burst
             t0 = time.time()
             while time.time() - t0 < 0.03:
+                # update можно оставить (у тебя pass), не мешает
                 enc.update()
 
-                # --- ENCODER CLICK ---
-                # Пытаемся максимально безопасно достать событие клика:
-                clicked = False
-                if hasattr(enc, "was_clicked"):
-                    clicked = enc.was_clicked()
-                elif hasattr(enc, "clicked"):
-                    # если Encoder делает флаг
-                    clicked = bool(enc.clicked)
-                    if clicked:
-                        enc.clicked = False
-                elif hasattr(enc, "button_pressed"):
-                    clicked = enc.button_pressed()
-
-                if clicked:
-                    if focus == "tabs":
-                        # вход во вкладку
-                        focus = "page"
-                    else:
-                        # клик внутри страницы
-                        page = pages[tabbar.active]
-                        res = page.on_click() if hasattr(page, "on_click") else None
-                        if res == "back":
-                            focus = "tabs"
-
-                # --- TOUCH ---
                 pos = touch.read(samples=5)
                 if pos is not None:
                     x, y = pos
@@ -94,7 +84,6 @@ def main():
                         focus = "tabs"   # тап по табам всегда возвращает в меню
                     else:
                         pages[tabbar.active].handle_touch(x, y, {})
-
                 time.sleep(0.002)
 
     except KeyboardInterrupt:
