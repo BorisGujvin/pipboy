@@ -1,41 +1,18 @@
-# pages/item_page.py
 import time
 from .base import Page
 from ui.theme import (
     PADDING, PIP_PANEL, PIP_ACCENT, PIP_TEXT, DIV_LINE, TAB_H,
     font_sm, font_md, font_lg
-)
-
-# HA client in affectors/
-try:
-    from affectors.ha_client import toggle as ha_toggle, get_state as ha_get_state
-except Exception as e:
-    ha_toggle = None
-    ha_get_state = None
-    print("[ItemPage] affectors.ha_client import failed:", e)
-
+from affectors.ha_client import toggle as ha_toggle, get_state as ha_get_state
 
 class ItemPage(Page):
-    """
-    Fallout/Pip-Boy sockets page (kept ItemPage name).
-    UI:
-      - no left radio/status dot
-      - no row frames (only name highlight when selected)
-      - toggle OFF look kept, ON look changed:
-          * no "OFF" text
-          * no left oval/fill
-          * right side highlights + "ON" bright
-    Touch:
-      main sends state={} => tap-per-event with debounce
-    """
-
     def __init__(self, width, height):
         self.W = width
         self.H = height
 
         self.sockets = [
-            {"id": "switch.sonoff_1002036b3f_1", "name": "N1", "state": False},
-            {"id": "switch.stub_n2",            "name": "N2", "state": False},
+            {"id": "switch.sonoff_1002036b3f_1", "name": "First", "state": False},
+            {"id": "switch.stub_n2",            "name": "Fake", "state": False},
         ]
 
         self.selected = 0
@@ -111,13 +88,6 @@ class ItemPage(Page):
         self._draw_toggle(draw, tx0, ty0, tx1, ty1, s["state"])
 
     def _draw_toggle(self, draw, x0, y0, x1, y1, is_on):
-        """
-        Slider toggle in Pip-Boy/Fallout style.
-        OFF look kept. ON look:
-          - highlight RIGHT segment
-          - no OFF text
-          - no left fill
-        """
         w = x1 - x0
         h = y1 - y0
         r = h // 2
