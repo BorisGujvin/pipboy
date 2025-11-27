@@ -18,10 +18,11 @@ class ItemPage(Page):
     """
     Items = sockets page (kept ItemPage name).
 
-    Requirement:
-      - when page ACTIVE: header shows "BACK" instead of "SOCKETS" (same size/height)
-      - no BACK row in list
-      - encoder cycles in circle THROUGH BACK and sockets
+    Requirements implemented:
+      - when page ACTIVE: header text "SOCKETS" -> "BACK" (dark/ inactive color)
+      - header is part of circular selection (sel=-1)
+      - selection cycles in circle through header and sockets
+      - no underline; selected text becomes light green
     """
 
     def __init__(self, width, height):
@@ -33,11 +34,10 @@ class ItemPage(Page):
             {"id": "switch.stub_n2",            "name": "N2", "state": False},
         ]
 
-        # sel = -1 => BACK (header)
+        # sel = -1 => header (BACK when active)
         # sel = 0..n-1 => sockets
         self.sel = 0
-
-        self.active = False  # set by main via set_active()
+        self.active = False  # main should call set_active(True/False)
 
         self.area = (PADDING, TAB_H + PADDING, self.W - PADDING, self.H - PADDING)
         self.row_h = 62
@@ -48,13 +48,14 @@ class ItemPage(Page):
 
         self._sync_states()
 
+    # called by main when entering/leaving page focus
     def set_active(self, active: bool):
         self.active = active
-        # when entering page, start selection on first socket
+        # when entering page focus, start on first socket
         if active:
             self.sel = 0
         else:
-            self.sel = 0  # doesn't matter much outside
+            self.sel = 0
 
     def _sync_states(self):
         if not ha_get_state:
@@ -72,26 +73,24 @@ class ItemPage(Page):
         x0, y0, x1, y1 = self.area
         draw.rectangle(self.area, outline=PIP_ACCENT, fill=PIP_PANEL)
 
-        # Header: SOCKETS normally, BACK when active
-        header_txt = "BACK" if self.active else "SOCKETS"
-        header_selected = (self.sel == -1)
+        # Header text + color rules
+        if self.active:
+            header_txt = "BACK"
+            header_color = PIP_ACCENT if self.sel == -1 else DIV_LINE  # selected bright, otherwise dark
+        else:
+            header_txt = "SOCKETS"
+            header_color = PIP_ACCENT  # normal bright when not active
 
-        header_color = PIP_ACCENT if header_selected else PIP_ACCENT
-        # selected just makes it brighter via underline; color stays accent
         draw.text((x0 + 10, y0 + 6), header_txt, fill=header_color, font=font_md)
-
-        # underline when BACK selected
-        if header_selected:
-            w = draw.textbbox((0, 0), header_txt, font=font_md)[2]
-            draw.line([x0 + 10, y0 + 26, x0 + 10 + w, y0 + 26], fill=PIP_ACCENT, width=2)
-
         draw.line([x0 + 8, y0 + 30, x1 - 8, y0 + 30], fill=DIV_LINE, width=2)
 
-        # list (only sockets)
+        # sockets list only (no BACK row)
         y = y0 + 38
         for i, s in enumerate(self.sockets):
-            self._draw_socket_row(draw, x0 + 8, y, x1 - 8, y + self.row_h,
-                                  s, selected=(i == self.sel))
+            self._draw_socket_row(
+                draw, x0 + 8, y, x1 - 8, y + self.row_h,
+                s, selected=(i == self.sel)
+            )
             draw.line([x0 + 8, y + self.row_h + 3, x1 - 8, y + self.row_h + 3],
                       fill=DIV_LINE, width=1)
             y += self.row_h + self.row_gap
@@ -100,9 +99,10 @@ class ItemPage(Page):
 
     def _draw_socket_row(self, draw, x0, y0, x1, y1, s, selected=False):
         mid_y = (y0 + y1) // 2
-        name_color = PIP_ACCENT if selected else DIV_LINE
 
+        name_color = PIP_ACCENT if selected else DIV_LINE
         draw.text((x0 + 6, y0 + 6), s["name"], fill=name_color, font=font_lg)
+
         sub = "real device" if s["id"].startswith("switch.sonoff_") else "stub"
         draw.text((x0 + 6, y0 + 36), sub, fill=DIV_LINE, font=font_sm)
 
@@ -123,9 +123,11 @@ class ItemPage(Page):
         accent = PIP_ACCENT
         dim = DIV_LINE
 
+        # Track outline
         draw.rounded_rectangle([x0, y0, x1, y1], radius=r,
                                outline=accent, fill=bg, width=2)
 
+        # ON fill (RIGHT segment only)
         if is_on:
             pad = 2
             right_start = x0 + int(w * 0.38)
@@ -136,10 +138,12 @@ class ItemPage(Page):
                 fill=accent
             )
 
+        # subtle vertical scan/grid
         grid_step = 4
         for gx in range(int(x0)+grid_step, int(x1-grid_step), grid_step):
             draw.line([gx, y0+2, gx, y1-2], fill=dim, width=1)
 
+        # Knob position
         knob_r = r - 3
         kx = (x0 + w - r) if is_on else (x0 + r)
         ky = y0 + r
@@ -150,6 +154,7 @@ class ItemPage(Page):
             draw.ellipse([kx-knob_r+1, ky-knob_r+1, kx+knob_r-1, ky+knob_r-1],
                          outline=None, fill=accent)
 
+        # Only "ON" label on right (no OFF)
         on_txt = "ON"
         on_w = draw.textbbox((0, 0), on_txt, font=font_sm)[2]
         on_x = x1 - r - on_w // 2
@@ -160,13 +165,13 @@ class ItemPage(Page):
 
     def on_encoder(self, delta: int):
         """
-        Circular navigation through BACK(header) + sockets.
-        order: BACK(-1) -> 0 -> 1 -> ... -> BACK
+        Circular navigation through header(BACK when active) + sockets.
+        order: HEADER(sel=-1) -> 0 -> 1 -> ... -> HEADER
         """
         n = len(self.sockets)
-        total = n + 1  # BACK + sockets
+        total = n + 1  # header + sockets
 
-        # map sel to [0..total-1], where 0=BACK
+        # map sel to [0..total-1], where 0=header
         idx = 0 if self.sel == -1 else (self.sel + 1)
         idx = (idx + delta) % total
 
@@ -174,6 +179,11 @@ class ItemPage(Page):
         self.sel = -1 if idx == 0 else (idx - 1)
 
     def on_click(self):
+        """
+        Click inside page:
+          header selected -> back
+          socket selected -> toggle it
+        """
         if self.sel == -1:
             return "back"
         self._toggle_index(self.sel)
