@@ -19,3 +19,9 @@ class DataPage(Page):
 
     def handle_touch(self, x, y, state):
         return
+
+    def on_encoder(self, delta: int):
+        pass
+
+    def on_click(self):
+        pass
